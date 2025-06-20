@@ -1,0 +1,61 @@
+Request: I used already sent file and it's file_id.
+
+{
+    "model": "gpt-4.1",
+    "messages": [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "file",
+                    "file": {
+                        "file_id": "file-Jikwv15NAjKmDYtZLMp6tr"
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "Задача: Преобразуй каждую страницу прикреплённого PDF-документа в отдельное изображение формата JPEG максимального качества (dpi не менее 300, качество 100%). Требования к ответу: • Работай только с тем PDF-файлом, который загружен к этому запросу. • Используй максимальное качество конвертации. • Для каждой страницы создай JPEG-файл. • В ответе верни изображения. Требую: • Реальные JPEG-файлы, созданные из каждой страницы PDF. • Реальные прямые ссылки для скачивания каждого JPEG-файла. • В ответе — только ссылки на изображения."
+                }
+            ]
+        }
+    ]
+}
+
+Response:
+
+{
+    "id": "chatcmpl-BhXIJMrj3dAu7EHjUsirxMXdVOvYU",
+    "object": "chat.completion",
+    "created": 1749715787,
+    "model": "gpt-4.1-2025-04-14",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "Извините, но на данный момент невозможно напрямую передать или предоставить скачиваемые ссылки на JPEG-файлы, конвертированные из вашего PDF, через этот интерфейс. Ваш PDF был успешно обработан для извлечения текста и предварительного просмотра изображений, однако прямая загрузка сгенерированных JPEG-файлов или создание внешних ссылок на такие файлы не поддерживается.\n\nРекомендация: вы можете использовать десктопные программы (например, Adobe Acrobat, PDF-XChange Editor) или онлайн-сервисы (например, ilovepdf.com, smallpdf.com, pdf2jpg.net) для такой задачи. Они позволяют загружать PDF и скачивать конвертированные JPEG-файлы в максимальном качестве. \n\nЕсли вам требуется извлечь страницы в виде изображений, могу предложить инструкции по использованию утилит или онлайн-сервисов. Если нужна другая помощь — дайте знать!",
+                "refusal": null,
+                "annotations": []
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+        }
+    ],
+    "usage": {
+        "prompt_tokens": 3478,
+        "completion_tokens": 195,
+        "total_tokens": 3673,
+        "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "accepted_prediction_tokens": 0,
+            "rejected_prediction_tokens": 0
+        }
+    },
+    "service_tier": "default",
+    "system_fingerprint": "fp_51e1070cf2"
+}

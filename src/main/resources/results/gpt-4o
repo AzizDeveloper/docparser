@@ -1,0 +1,63 @@
+
+{
+  "vendor": {
+    "name": "TOO \"TORTAY engineering Co\"",
+    "description": null,
+    "email": null,
+    "district": null,
+    "city": "Нур-Султан",
+    "address": null,
+    "contactName": null,
+    "deliveryTime": null
+  },
+  "products": [
+    {
+      "code": "Б1-ПСЦ-73.21.20-Ц-01",
+      "productName": "МаБет C20/25, W10, F100",
+      "price": null,
+      "amount": 3.04,
+      "warehouse": null,
+      "materialMeasureType": "CUBIC_M"
+    }
+  ]
+}
+
+----------------------------------------
+Real response
+
+{
+    "id": "chatcmpl-BhE6JEzsC9gsaYAXQbPQ8yXSakkNW",
+    "object": "chat.completion",
+    "created": 1749642007,
+    "model": "gpt-4o-2024-08-06",
+    "choices": [
+        {
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "```json\n{\n  \"vendor\": {\n    \"name\": \"TOO \\\"TORTAY engineering Co\\\"\",\n    \"description\": null,\n    \"email\": null,\n    \"district\": null,\n    \"city\": \"Нур-Султан\",\n    \"address\": null,\n    \"contactName\": null,\n    \"deliveryTime\": null\n  },\n  \"products\": [\n    {\n      \"code\": \"Б1-ПСЦ-73.21.20-Ц-01\",\n      \"productName\": \"МаБет C20/25, W10, F100\",\n      \"price\": null,\n      \"amount\": 3.04,\n      \"warehouse\": null,\n      \"materialMeasureType\": \"CUBIC_M\"\n    }\n  ]\n}\n```",
+                "refusal": null,
+                "annotations": []
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+        }
+    ],
+    "usage": {
+        "prompt_tokens": 3892,
+        "completion_tokens": 162,
+        "total_tokens": 4054,
+        "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": 0,
+            "accepted_prediction_tokens": 0,
+            "rejected_prediction_tokens": 0
+        }
+    },
+    "service_tier": "default",
+    "system_fingerprint": "fp_a288987b44"
+}
