@@ -28,7 +28,22 @@ public class PdfToBase64Controller {
 
         String response = gptRequestSenderService.sendToGptVision(base64Images);
 
-        System.out.println("Converting file method ended");
+        System.out.println("Converting file method ended.");
+        return ResponseEntity.ok(response);
+    }
+
+
+    @PostMapping("/convert/gemini")
+    public ResponseEntity<String> convertPdfToBase64WithGemini(@RequestParam("file") MultipartFile file) {
+        System.out.println("Converting file with Gemini method started:");
+
+        List<String> base64Images = pdfToBase64Service.convertPdfToBase64Images(file);
+
+//        base64Images.forEach(System.out::println);
+
+        String response = gptRequestSenderService.sendToGemini(base64Images);
+
+        System.out.println("Converting file with Gemini method ended.");
         return ResponseEntity.ok(response);
     }
 

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +25,9 @@ public class GPTRequestSenderService {
 
     @Value("${openai.api.key}")
     private String apiKey;
+
+    @Value("${spring.ai.gemini.api-key}")
+    private String geminiApiKey;
 
     //    public String sendToGptVision(String base64Image) {
     public String sendToGptVision(List<String> base64Images) {
@@ -120,7 +124,59 @@ public class GPTRequestSenderService {
 // Add text object
         Map<String, Object> textObject = new HashMap<>();
         textObject.put("type", "text");
-        textObject.put("text", "There are images, but they are actually pages of the pdf file. Order: Top left, top right, bottom left, bottom right. Every 4 images are 1 pdf page. Don't response with like top left or top right, but create one whole page of information. Stick them together. Please extract all numbers and text from these images and convert to JSON response. If products or items have the same name then attach it's unique field to it's name. Images can have cyrillic symbols. I do not need any other words than JSON response in the response.");
+        textObject.put("text", "There are images, but they are actually pages of the pdf file. Order: Top left, top right, bottom left, bottom right. Every 4 images are 1 pdf page. Don't response with like top left or top right, but create one whole page of information. Stick them together. Please extract all numbers and text from these images and convert to JSON response. If products or items have the same name then attach it's unique field to it's name. Images can have cyrillic symbols. I do not need any other words than JSON response in the response." +
+                " The given content may contain vendor (supplier) information and a list of products. \n" +
+                "                    Your task is to extract only the relevant fields and return the data as structured JSON objects.\n" +
+                "                    \n" +
+                "                    Ignore any unrelated data.\n" +
+                "                    If there are no relevant data then response: No relevant data found.\n" +
+                "                    If you couldn't read the file properly or text doesn't exists then response: No text data found.\n" +
+                "                    ---\n" +
+                "                    \n" +
+                "                    Vendor fields to extract (set missing fields to null if not found):\n" +
+                "                    - name : String\n" +
+                "                    - description : String\n" +
+                "                    - email : String\n" +
+                "                    - district : String\n" +
+                "                    - city : String\n" +
+                "                    - address : String\n" +
+                "                    - contactName : String\n" +
+                "                    - deliveryTime : Integer\n" +
+                "                    \n" +
+                "                    ---\n" +
+                "                    \n" +
+                "                    Product fields to extract (can be multiple products, set missing fields to null):\n" +
+                "                    - code : String\n" +
+                "                    - productName : String\n" +
+                "                    - price : BigDecimal\n" +
+                "                    - amount : BigDecimal\n" +
+                "                    - warehouse : String\n" +
+                "                    - materialMeasureType : String\n" +
+                "                    \n" +
+                "                    UNITS(1, \"amount\", \"Amount\", \"platform.measureTypes.units\"),\n" +
+                "                    WEIGHTED_KILO(2, \"kg\", \"KG\", \"platform.measureTypes.weighted_kilo\"),\n" +
+                "                    WEIGHTED_GRAM(3, \"gr\", \"GR\", \"platform.measureTypes.weighted_gram\"),\n" +
+                "                    VOLUME_L(4, \"ltr\", \"LTR\", \"platform.measureTypes.volume_litres\"),\n" +
+                "                    VOLUME_ML(5, \"ml\", \"ML\", \"platform.measureTypes.volume_mLitres\"),\n" +
+                "                    SQUARE_M(6, \"square meters\", \"sq. m\", \"platform.measureTypes.square_meters\"),\n" +
+                "                    LINEAR_METERS(7, \"linear meters\", \"ln. m\", \"platform.measureTypes.linear_meters\"),\n" +
+                "                    CUBIC_M(8, \"cubic meters\", \"cub. m\", \"platform.measureTypes.cubic_meters\"),\n" +
+                "                    TONS(9, \"tons\", \"t\", \"platform.measureTypes.tons\");\n" +
+                "                    \n" +
+                "                    platform.measureTypes.name=Ед.изм.  - means Единица измерения\n" +
+                "                    platform.measureTypes.units=шт - штук\n" +
+                "                    platform.measureTypes.weighted_kilo=кг - килограмм\n" +
+                "                    platform.measureTypes.weighted_gram=г - грамм\n" +
+                "                    platform.measureTypes.volume_litres=л - литр\n" +
+                "                    platform.measureTypes.volume_mLitres=мл - миллилитр\n" +
+                "                    platform.measureTypes.square_meters=м² - квадратный метр\n" +
+                "                    platform.measureTypes.linear_meters=п.м. - погонные метры\n" +
+                "                    platform.measureTypes.cubic_meters=м³ - кубический метр\n" +
+                "                    platform.measureTypes.tons=т - тонна\n" +
+                "                    \n" +
+                "                    when creating result use those enums like UNITS or TONS or etc, not raw т or кг.\n" +
+                "                    \n" +
+                "                    Do NOT include any extra fields not mentioned above.");
 //        textObject.put("text", "There are images, but they are actually pages of the pdf file. Pdf can have more pages than one, I need all pdf pages information not only first page (first 4 images). I need you to handle all pages from. Like if pdf has 3 pages then images could be 12 and you must handle all 12 pages. If you cannot handle all images with some problem please declare that in the beginning of the response. Images order is like these: 1 - Top left, 2- top right, 3- bottom left, 4 - bottom right. From those 4 images create one pdf page information, do not response like page 1, page 2, they are images of one page. So response with pdf page 1 (image page1 or etc). Images can have cyrillic symbols. Response with table if needed. Also add information about how many images you got in the beginning.");
 //        textObject.put("text", "You MUST process ALL provided images. Do NOT summarize just the first 4. Process ALL images grouped in 4s per page, and return full extracted text or tables for EACH PDF page.\n" +
 //                "If you cannot do so due to token or model limitations, reply with a message that processing all pages is not possible. Also add how many images did you get.\n");
@@ -176,6 +232,116 @@ public class GPTRequestSenderService {
 
         return response.getBody();
     }
+
+    public String sendToGemini(List<String> base64Images) {
+//        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=" + geminiApiKey;
+        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + geminiApiKey;
+
+        ObjectMapper mapper = new ObjectMapper();
+
+        // Content parts
+        List<Map<String, Object>> parts = new ArrayList<>();
+
+        // Add image parts (up to 4 as in original, adjust as needed)
+        for (int i = 0; i < 4 && i < base64Images.size(); i++) {
+            Map<String, Object> imagePart = new HashMap<>();
+            Map<String, String> inlineData = new HashMap<>();
+            inlineData.put("mimeType", "image/png");  // or image/jpeg if that's your base64
+            inlineData.put("data", base64Images.get(i).replace("data:image/png;base64,", ""));
+
+            imagePart.put("inlineData", inlineData);
+            parts.add(imagePart);
+        }
+
+        // Add text part (your instruction)
+        Map<String, Object> textPart = new HashMap<>();
+        textPart.put("text", "There are images, but they are actually pages of the pdf file. Order: Top left, top right, bottom left, bottom right. Every 4 images are 1 pdf page. Don't response with like top left or top right, but create one whole page of information. Stick them together. Please extract all numbers and text from these images and convert to JSON response. If products or items have the same name then attach it's unique field to it's name. Images can have cyrillic symbols. I do not need any other words than JSON response in the response.\" +\n" +
+                "                \" The given content may contain vendor (supplier) information and a list of products. \\n\" +\n" +
+                "                \"                    Your task is to extract only the relevant fields and return the data as structured JSON objects.\\n\" +\n" +
+                "                \"                    \\n\" +\n" +
+                "                \"                    Ignore any unrelated data.\\n\" +\n" +
+                "                \"                    If there are no relevant data then response: No relevant data found.\\n\" +\n" +
+                "                \"                    If you couldn't read the file properly or text doesn't exists then response: No text data found.\\n\" +\n" +
+                "                \"                    ---\\n\" +\n" +
+                "                \"                    \\n\" +\n" +
+                "                \"                    Vendor fields to extract (set missing fields to null if not found):\\n\" +\n" +
+                "                \"                    - name : String\\n\" +\n" +
+                "                \"                    - description : String\\n\" +\n" +
+                "                \"                    - email : String\\n\" +\n" +
+                "                \"                    - district : String\\n\" +\n" +
+                "                \"                    - city : String\\n\" +\n" +
+                "                \"                    - address : String\\n\" +\n" +
+                "                \"                    - contactName : String\\n\" +\n" +
+                "                \"                    - deliveryTime : Integer\\n\" +\n" +
+                "                \"                    \\n\" +\n" +
+                "                \"                    ---\\n\" +\n" +
+                "                \"                    \\n\" +\n" +
+                "                \"                    Product fields to extract (can be multiple products, set missing fields to null):\\n\" +\n" +
+                "                \"                    - code : String\\n\" +\n" +
+                "                \"                    - productName : String\\n\" +\n" +
+                "                \"                    - price : BigDecimal\\n\" +\n" +
+                "                \"                    - amount : BigDecimal\\n\" +\n" +
+                "                \"                    - warehouse : String\\n\" +\n" +
+                "                \"                    - materialMeasureType : String\\n\" +\n" +
+                "                \"                    \\n\" +\n" +
+                "                \"                    UNITS(1, \\\"amount\\\", \\\"Amount\\\", \\\"platform.measureTypes.units\\\"),\\n\" +\n" +
+                "                \"                    WEIGHTED_KILO(2, \\\"kg\\\", \\\"KG\\\", \\\"platform.measureTypes.weighted_kilo\\\"),\\n\" +\n" +
+                "                \"                    WEIGHTED_GRAM(3, \\\"gr\\\", \\\"GR\\\", \\\"platform.measureTypes.weighted_gram\\\"),\\n\" +\n" +
+                "                \"                    VOLUME_L(4, \\\"ltr\\\", \\\"LTR\\\", \\\"platform.measureTypes.volume_litres\\\"),\\n\" +\n" +
+                "                \"                    VOLUME_ML(5, \\\"ml\\\", \\\"ML\\\", \\\"platform.measureTypes.volume_mLitres\\\"),\\n\" +\n" +
+                "                \"                    SQUARE_M(6, \\\"square meters\\\", \\\"sq. m\\\", \\\"platform.measureTypes.square_meters\\\"),\\n\" +\n" +
+                "                \"                    LINEAR_METERS(7, \\\"linear meters\\\", \\\"ln. m\\\", \\\"platform.measureTypes.linear_meters\\\"),\\n\" +\n" +
+                "                \"                    CUBIC_M(8, \\\"cubic meters\\\", \\\"cub. m\\\", \\\"platform.measureTypes.cubic_meters\\\"),\\n\" +\n" +
+                "                \"                    TONS(9, \\\"tons\\\", \\\"t\\\", \\\"platform.measureTypes.tons\\\");\\n\" +\n" +
+                "                \"                    \\n\" +\n" +
+                "                \"                    platform.measureTypes.name=Ед.изм.  - means Единица измерения\\n\" +\n" +
+                "                \"                    platform.measureTypes.units=шт - штук\\n\" +\n" +
+                "                \"                    platform.measureTypes.weighted_kilo=кг - килограмм\\n\" +\n" +
+                "                \"                    platform.measureTypes.weighted_gram=г - грамм\\n\" +\n" +
+                "                \"                    platform.measureTypes.volume_litres=л - литр\\n\" +\n" +
+                "                \"                    platform.measureTypes.volume_mLitres=мл - миллилитр\\n\" +\n" +
+                "                \"                    platform.measureTypes.square_meters=м² - квадратный метр\\n\" +\n" +
+                "                \"                    platform.measureTypes.linear_meters=п.м. - погонные метры\\n\" +\n" +
+                "                \"                    platform.measureTypes.cubic_meters=м³ - кубический метр\\n\" +\n" +
+                "                \"                    platform.measureTypes.tons=т - тонна\\n\" +\n" +
+                "                \"                    \\n\" +\n" +
+                "                \"                    when creating result use those enums like UNITS or TONS or etc, not raw т or кг.\\n\" +\n" +
+                "                \"                    \\n\" +\n" +
+                "                \"                    Do NOT include any extra fields not mentioned above.");
+        parts.add(textPart);
+
+        // Root request structure
+        Map<String, Object> content = new HashMap<>();
+        content.put("parts", parts);
+
+        Map<String, Object> root = new HashMap<>();
+        root.put("contents", Collections.singletonList(content));
+
+        // Build JSON
+        String jsonRequest;
+        try {
+            jsonRequest = mapper.writeValueAsString(root);
+        } catch (JsonProcessingException e) {
+            log.error("Error while creating JSON object", e);
+            throw new RuntimeException(e);
+        }
+
+        System.out.println("Gemini JSON request:");
+        System.out.println(jsonRequest);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
+        RestTemplate restTemplate = new RestTemplate();
+
+        ResponseEntity<String> response = restTemplate.postForEntity(endpoint, entity, String.class);
+        System.out.println("Gemini response:");
+        System.out.println(response.getBody());
+
+        return response.getBody();
+    }
+
 }
 
 //before
@@ -260,3 +426,5 @@ root.put("messages", messages);
 String jsonRequest = root.toString();  // Ready to send
 
 * */
+
+
