@@ -1,0 +1,88 @@
+You are given 4 images that represent one page of a PDF. The image layout is:
+
+- Top left
+- Top right
+- Bottom left
+- Bottom right
+
+Treat them as a 2x2 grid forming a full page, and combine their contents accordingly.
+
+Each image may contain vendor information and a product list. Your task is to extract only the **relevant vendor and product data**, then return the result as **raw JSON only** — with no markdown formatting, no explanations.
+
+---
+
+PHASE 1 — OCR Extraction (CRITICAL):
+
+- Carefully extract all visible Cyrillic text, **preserving characters as they appear**.
+- Pay extra attention to similar Cyrillic characters like:
+  - `Д` vs `Л`
+  - `З` vs `3`
+- DO NOT guess, normalize, or autocorrect. Use exactly what you see in the image.
+- DO NOT skip any rows that resemble a product, even if some fields are incomplete.
+- Preserve line order and numbers with precision.
+- Do not apply any logic at this stage — just extract all potential product rows and vendor fields.
+
+---
+
+PHASE 2 — Data Structuring and Logic:
+
+### ✅ Vendor fields (skip if not found):
+- `name`: String  
+- `description`: String  
+- `email`: String  
+- `district`: String  
+- `city`: String  
+- `address`: String  
+- `contactName`: String  
+- `deliveryTime`: Integer
+
+### ✅ Product fields:
+- `code`: String  
+- `productName`: String  
+- `internalProducts`: List<Product>  
+- `productLevel`: ProductLevel  
+- `price`: BigDecimal  
+- `amount`: BigDecimal  
+- `warehouse`: String  
+- `materialMeasureType`: MaterialMeasureType
+
+### 🧩 Enums:
+
+#### `ProductLevel`:
+- `LEVEL_1` = raw materials  
+- `LEVEL_2` = detail  
+- `LEVEL_3` = finished product  
+
+#### `MaterialMeasureType`:
+UNITS - Ед.изм. - Единица измерения, or шт - штук
+WEIGHTED_KILO - кг - килограмм
+WEIGHTED_GRAM - г - грамм
+VOLUME_L - л - литр
+VOLUME_ML - мл - миллилитр
+SQUARE_M - м² - квадратный метр
+LINEAR_METERS - п.м. - погонные метры
+CUBIC_M - м³ - кубический метр
+TONS - т - тонна
+
+---
+
+MANDATORY LOGIC:
+
+1. Group products by `productName` only. **Ignore the `code` field** during grouping.
+2. If `productName` differs only by dashes or spacing, treat as identical.
+3. If productNames are same then **sum the total amount**.
+4. Merge lengths or weights logically when units allow (e.g., weight * amount or length * amount).
+5. Use only one materialMeasureType per product.
+6. If a product has internal components, place them in `internalProducts`.
+7. If a product is labeled as `LEVEL_2` or `LEVEL_3` but has no `internalProducts`, demote it to `LEVEL_1`.
+8. If hierarchy is unclear, assign the largest product as `LEVEL_3` and others as `LEVEL_1` and nest them.
+9. Do NOT include totals, titles, metadata rows, or unrelated text.
+10. Do not add or guess anything. Use only data present in the image.
+
+---
+
+### Output rules:
+
+- Output raw JSON only.
+- If no relevant product or vendor data found: `No relevant data found`
+- If image has no text at all: `No text data found`

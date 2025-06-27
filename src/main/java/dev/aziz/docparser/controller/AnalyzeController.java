@@ -35,7 +35,7 @@ public class AnalyzeController {
             Return JSON with fields: customerName, invoiceDate, totalAmount.
         """;
 
-//        String response = geminiService.callGemini(prompt, docText);
+//        String response = geminiService.callGemini(prevPromptsExamples, docText);
 //        return ResponseEntity.ok(response);
         return null;
     }

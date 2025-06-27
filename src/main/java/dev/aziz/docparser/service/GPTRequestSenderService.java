@@ -1,6 +1,7 @@
 package dev.aziz.docparser.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +13,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -32,7 +36,7 @@ public class GPTRequestSenderService {
     //    public String sendToGptVision(String base64Image) {
     public String sendToGptVision(List<String> base64Images) {
         String endpoint = "https://api.openai.com/v1/chat/completions";
-// Daurens prompt
+// Daurens prevPromptsExamples
 // Ты — профессионал по техническому анализу строительных спецификаций. Всегда анализируй и отвечай, используя исключительно данные из присланного пользователем файла. Игнорируй любые сторонние предположения и не подставляй значения “по умолчанию”. Итог всегда представляй в виде табличного JSON: в отдельной секции “specification” — базовая информация о документе, в “materials” — только сырьевые элементы с количеством или массой больше нуля, каждый тип арматурного стержня — отдельная позиция по диаметру. Строго соблюдай структуру, приведённую в примере, и не добавляй лишних комментариев или описаний.
 
 //                    {
@@ -89,6 +93,21 @@ public class GPTRequestSenderService {
 //                """.formatted(base64Images.get(0), base64Images.get(1), base64Images.get(2), base64Images.get(3));
 ////                """.formatted(base64Images.get(1), base64Images.get(2), base64Images.get(3), base64Images.get(4));
 
+        // Add text object
+        String gptPrompt = "";
+        try {
+            // Replace with the actual path to your prevPromptsExamples file
+//            Path filePath = Path.of("src/main/resources/gptprompt.txt");
+            Path filePath = Path.of("src/main/resources/testprompt.txt");
+//            Path filePath = Path.of("src/main/resources/gptweightprompt.txt");
+
+            // Read entire content into one String
+            gptPrompt = Files.readString(filePath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("GPT Prompt: \n" + gptPrompt);
 
         ObjectMapper mapper = new ObjectMapper();
 
@@ -121,11 +140,19 @@ public class GPTRequestSenderService {
             contentArray.add(imageObject);
         }
 
-// Add text object
         Map<String, Object> textObject = new HashMap<>();
         textObject.put("type", "text");
-        textObject.put("text", "There are images, but they are actually pages of the pdf file. Order: Top left, top right, bottom left, bottom right. Every 4 images are 1 pdf page. Don't response with like top left or top right, but create one whole page of information. Stick them together. Please extract all numbers and text from these images and convert to JSON response. If products or items have the same name then attach it's unique field to it's name. Images can have cyrillic symbols. I do not need any other words than JSON response in the response." +
-                " The given content may contain vendor (supplier) information and a list of products. \n" +
+        textObject.put("text", gptPrompt);
+
+        /*textObject.put("text", "There are images, but they are actually pages of the pdf file. " +
+                "Order: Top left, top right, bottom left, bottom right. Every 4 images are 1 pdf page. " +
+                "Don't response with like top left or top right, but create one whole page of information. " +
+                "Stick them together. Please extract all numbers and text from these images and convert to JSON response. " +
+                "If products or items have the same name then attach it's unique field to it's name. " +
+                "Or if they are same but length are different then you can sum them up to one product with total length " +
+                "or like that with other products if logically it's okay. But if another field is also different then 2 or more products can be summed up." +
+                "Images can have cyrillic symbols. I do not need any other words than JSON response in the response." +
+                "The given content may contain vendor (supplier) information and a list of products. \n" +
                 "                    Your task is to extract only the relevant fields and return the data as structured JSON objects.\n" +
                 "                    \n" +
                 "                    Ignore any unrelated data.\n" +
@@ -133,7 +160,8 @@ public class GPTRequestSenderService {
                 "                    If you couldn't read the file properly or text doesn't exists then response: No text data found.\n" +
                 "                    ---\n" +
                 "                    \n" +
-                "                    Vendor fields to extract (set missing fields to null if not found):\n" +
+//                "                    Vendor fields to extract (set missing fields to null if not found):\n" +
+                "                    Vendor fields to extract (skip missing fields if not found):\n" +
                 "                    - name : String\n" +
                 "                    - description : String\n" +
                 "                    - email : String\n" +
@@ -145,13 +173,17 @@ public class GPTRequestSenderService {
                 "                    \n" +
                 "                    ---\n" +
                 "                    \n" +
-                "                    Product fields to extract (can be multiple products, set missing fields to null):\n" +
+//                "                    Product fields to extract (can be multiple products, set missing fields to null):\n" +
+                "                    Product fields to extract (can be multiple products, skip missing fields): \n" +
                 "                    - code : String\n" +
                 "                    - productName : String\n" +
+                "                    - List<ProductType> internalProducts (if some products contains of another product then it must be placed inside of his internalProducts list)\n" +
+                "                    - ProductLevel productLevel\n" +
                 "                    - price : BigDecimal\n" +
                 "                    - amount : BigDecimal\n" +
                 "                    - warehouse : String\n" +
                 "                    - materialMeasureType : String\n" +
+                "                    ProductLevel is enum class and it's values: LEVEL_1, LEVEL_2, LEVEL_3.\n" +
                 "                    \n" +
                 "                    UNITS(1, \"amount\", \"Amount\", \"platform.measureTypes.units\"),\n" +
                 "                    WEIGHTED_KILO(2, \"kg\", \"KG\", \"platform.measureTypes.weighted_kilo\"),\n" +
@@ -173,10 +205,21 @@ public class GPTRequestSenderService {
                 "                    platform.measureTypes.linear_meters=п.м. - погонные метры\n" +
                 "                    platform.measureTypes.cubic_meters=м³ - кубический метр\n" +
                 "                    platform.measureTypes.tons=т - тонна\n" +
-                "                    \n" +
                 "                    when creating result use those enums like UNITS or TONS or etc, not raw т or кг.\n" +
-                "                    \n" +
-                "                    Do NOT include any extra fields not mentioned above.");
+                "MANDATORY LOGIC:\n" +
+                "1. There are 3 levels:\n" +
+                "   - LEVEL_1: Raw Materials\n" +
+                "   - LEVEL_2: Detail (must be made ONLY from LEVEL_1)\n" +
+                "   - LEVEL_3: Finished Product (can be made from LEVEL_1 and/or LEVEL_2)\n" +
+                "2. If a product (LEVEL_2 or LEVEL_3) does NOT contain internalProducts (i.e., sub-components), then it must be considered a LEVEL_1 product instead.\n" +
+                "If there is no clear description about which product is what level then main product is level 3 and others level 1 and use nested structure." +
+                "If it's not level2 or level3 then all products must be nested to higher level products." +
+                "3. You must logically detect which items are actual products. Ignore rows or items that are clearly not products (e.g., headers, metadata, or totals).\n" +
+                "4. If multiple products have the same or very similar name (e.g., same Cyrillic root word), sum their amounts. \n" +
+                " If weight, lengths (millimeter or centimeter -> convert them to meter) and amount are given, calculate their total amount = length × amount and put measure type to meter. Then group by product name and sum.\n" +
+                "5. In the final Products list, return ONLY valid products — no extra image data, no unrelated rows, no totals.\n" +
+                "6. Cyrillic product names must be OCRed correctly. Pay extra attention to the first 3–4 characters. DO NOT guess or replace letters incorrectly.\n " +
+                "                    Do NOT include any extra fields not mentioned above.");*/
 //        textObject.put("text", "There are images, but they are actually pages of the pdf file. Pdf can have more pages than one, I need all pdf pages information not only first page (first 4 images). I need you to handle all pages from. Like if pdf has 3 pages then images could be 12 and you must handle all 12 pages. If you cannot handle all images with some problem please declare that in the beginning of the response. Images order is like these: 1 - Top left, 2- top right, 3- bottom left, 4 - bottom right. From those 4 images create one pdf page information, do not response like page 1, page 2, they are images of one page. So response with pdf page 1 (image page1 or etc). Images can have cyrillic symbols. Response with table if needed. Also add information about how many images you got in the beginning.");
 //        textObject.put("text", "You MUST process ALL provided images. Do NOT summarize just the first 4. Process ALL images grouped in 4s per page, and return full extracted text or tables for EACH PDF page.\n" +
 //                "If you cannot do so due to token or model limitations, reply with a message that processing all pages is not possible. Also add how many images did you get.\n");
@@ -201,9 +244,10 @@ public class GPTRequestSenderService {
         Map<String, Object> root = new HashMap<>();
         root.put("model", "gpt-4.1");
         root.put("messages", messages);
+        root.put("temperature", 0);
 
-        System.out.println("root:");
-        System.out.println(root);
+//        System.out.println("root:");
+//        System.out.println(root);
 
 // Convert to JSON string
         String jsonRequest = null;
@@ -219,23 +263,58 @@ public class GPTRequestSenderService {
         headers.setBearerAuth(apiKey);
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        System.out.println("jsonRequest:");
-        System.out.println(jsonRequest);
+//        System.out.println("jsonRequest:");
+//        System.out.println(jsonRequest);
 
         HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
 
         RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<String> response =
-                restTemplate.postForEntity(endpoint, entity, String.class);
+        ResponseEntity<String> response = restTemplate.postForEntity(endpoint, entity, String.class);
 
-        System.out.println(response.getBody());
+//        System.out.println(response.getBody());
 
-        return response.getBody();
+//        return response.getBody();
+        Object json = null;
+        String prettyJson = null;
+        try {
+            json = mapper.readValue(response.getBody(), Object.class);
+            prettyJson = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(json);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+        JsonNode rootResponse = null;
+        try {
+            rootResponse = mapper.readTree(response.getBody());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+        String onlyResponse = rootResponse
+                .path("choices")
+                .get(0)
+                .path("message")
+                .path("content")
+                .asText();
+        return onlyResponse;
+
     }
 
+    //TODO: extract gemini prompt to textFile ( or use for both one prompt)
     public String sendToGemini(List<String> base64Images) {
-//        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=" + geminiApiKey;
-        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + geminiApiKey;
+//        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + geminiApiKey;
+        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=" + geminiApiKey;
+
+        String geminiPrompt = "";
+        try {
+            // Replace with the actual path to your prevPromptsExamples file
+//            Path filePath = Path.of("src/main/resources/gptprompt.txt");
+            Path filePath = Path.of("src/main/resources/testprompt.txt");
+//            Path filePath = Path.of("src/main/resources/gptweightprompt.txt");
+
+            // Read entire content into one String
+            geminiPrompt = Files.readString(filePath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
         ObjectMapper mapper = new ObjectMapper();
 
@@ -255,59 +334,7 @@ public class GPTRequestSenderService {
 
         // Add text part (your instruction)
         Map<String, Object> textPart = new HashMap<>();
-        textPart.put("text", "There are images, but they are actually pages of the pdf file. Order: Top left, top right, bottom left, bottom right. Every 4 images are 1 pdf page. Don't response with like top left or top right, but create one whole page of information. Stick them together. Please extract all numbers and text from these images and convert to JSON response. If products or items have the same name then attach it's unique field to it's name. Images can have cyrillic symbols. I do not need any other words than JSON response in the response.\" +\n" +
-                "                \" The given content may contain vendor (supplier) information and a list of products. \\n\" +\n" +
-                "                \"                    Your task is to extract only the relevant fields and return the data as structured JSON objects.\\n\" +\n" +
-                "                \"                    \\n\" +\n" +
-                "                \"                    Ignore any unrelated data.\\n\" +\n" +
-                "                \"                    If there are no relevant data then response: No relevant data found.\\n\" +\n" +
-                "                \"                    If you couldn't read the file properly or text doesn't exists then response: No text data found.\\n\" +\n" +
-                "                \"                    ---\\n\" +\n" +
-                "                \"                    \\n\" +\n" +
-                "                \"                    Vendor fields to extract (set missing fields to null if not found):\\n\" +\n" +
-                "                \"                    - name : String\\n\" +\n" +
-                "                \"                    - description : String\\n\" +\n" +
-                "                \"                    - email : String\\n\" +\n" +
-                "                \"                    - district : String\\n\" +\n" +
-                "                \"                    - city : String\\n\" +\n" +
-                "                \"                    - address : String\\n\" +\n" +
-                "                \"                    - contactName : String\\n\" +\n" +
-                "                \"                    - deliveryTime : Integer\\n\" +\n" +
-                "                \"                    \\n\" +\n" +
-                "                \"                    ---\\n\" +\n" +
-                "                \"                    \\n\" +\n" +
-                "                \"                    Product fields to extract (can be multiple products, set missing fields to null):\\n\" +\n" +
-                "                \"                    - code : String\\n\" +\n" +
-                "                \"                    - productName : String\\n\" +\n" +
-                "                \"                    - price : BigDecimal\\n\" +\n" +
-                "                \"                    - amount : BigDecimal\\n\" +\n" +
-                "                \"                    - warehouse : String\\n\" +\n" +
-                "                \"                    - materialMeasureType : String\\n\" +\n" +
-                "                \"                    \\n\" +\n" +
-                "                \"                    UNITS(1, \\\"amount\\\", \\\"Amount\\\", \\\"platform.measureTypes.units\\\"),\\n\" +\n" +
-                "                \"                    WEIGHTED_KILO(2, \\\"kg\\\", \\\"KG\\\", \\\"platform.measureTypes.weighted_kilo\\\"),\\n\" +\n" +
-                "                \"                    WEIGHTED_GRAM(3, \\\"gr\\\", \\\"GR\\\", \\\"platform.measureTypes.weighted_gram\\\"),\\n\" +\n" +
-                "                \"                    VOLUME_L(4, \\\"ltr\\\", \\\"LTR\\\", \\\"platform.measureTypes.volume_litres\\\"),\\n\" +\n" +
-                "                \"                    VOLUME_ML(5, \\\"ml\\\", \\\"ML\\\", \\\"platform.measureTypes.volume_mLitres\\\"),\\n\" +\n" +
-                "                \"                    SQUARE_M(6, \\\"square meters\\\", \\\"sq. m\\\", \\\"platform.measureTypes.square_meters\\\"),\\n\" +\n" +
-                "                \"                    LINEAR_METERS(7, \\\"linear meters\\\", \\\"ln. m\\\", \\\"platform.measureTypes.linear_meters\\\"),\\n\" +\n" +
-                "                \"                    CUBIC_M(8, \\\"cubic meters\\\", \\\"cub. m\\\", \\\"platform.measureTypes.cubic_meters\\\"),\\n\" +\n" +
-                "                \"                    TONS(9, \\\"tons\\\", \\\"t\\\", \\\"platform.measureTypes.tons\\\");\\n\" +\n" +
-                "                \"                    \\n\" +\n" +
-                "                \"                    platform.measureTypes.name=Ед.изм.  - means Единица измерения\\n\" +\n" +
-                "                \"                    platform.measureTypes.units=шт - штук\\n\" +\n" +
-                "                \"                    platform.measureTypes.weighted_kilo=кг - килограмм\\n\" +\n" +
-                "                \"                    platform.measureTypes.weighted_gram=г - грамм\\n\" +\n" +
-                "                \"                    platform.measureTypes.volume_litres=л - литр\\n\" +\n" +
-                "                \"                    platform.measureTypes.volume_mLitres=мл - миллилитр\\n\" +\n" +
-                "                \"                    platform.measureTypes.square_meters=м² - квадратный метр\\n\" +\n" +
-                "                \"                    platform.measureTypes.linear_meters=п.м. - погонные метры\\n\" +\n" +
-                "                \"                    platform.measureTypes.cubic_meters=м³ - кубический метр\\n\" +\n" +
-                "                \"                    platform.measureTypes.tons=т - тонна\\n\" +\n" +
-                "                \"                    \\n\" +\n" +
-                "                \"                    when creating result use those enums like UNITS or TONS or etc, not raw т or кг.\\n\" +\n" +
-                "                \"                    \\n\" +\n" +
-                "                \"                    Do NOT include any extra fields not mentioned above.");
+        textPart.put("text", geminiPrompt);
         parts.add(textPart);
 
         // Root request structure
@@ -326,8 +353,8 @@ public class GPTRequestSenderService {
             throw new RuntimeException(e);
         }
 
-        System.out.println("Gemini JSON request:");
-        System.out.println(jsonRequest);
+//        System.out.println("Gemini JSON request:");
+//        System.out.println(jsonRequest);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -336,10 +363,26 @@ public class GPTRequestSenderService {
         RestTemplate restTemplate = new RestTemplate();
 
         ResponseEntity<String> response = restTemplate.postForEntity(endpoint, entity, String.class);
-        System.out.println("Gemini response:");
-        System.out.println(response.getBody());
+//        System.out.println("Gemini response:");
+//        System.out.println(response.getBody());
 
-        return response.getBody();
+        JsonNode rootResponse = null;
+        try {
+            rootResponse = mapper.readTree(response.getBody());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+        String geminiResponse = rootResponse
+                .path("candidates")
+                .get(0)
+                .path("content")
+                .path("parts")
+                .get(0)
+                .path("text")
+                .asText();
+
+        return geminiResponse;
     }
 
 }

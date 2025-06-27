@@ -27,7 +27,8 @@ public class PdfToBase64Service {
             int pageCount = document.getNumberOfPages();
 
             for (int i = 0; i < pageCount; i++) {
-                BufferedImage image = pdfRenderer.renderImageWithDPI(i, 300); // High quality ( I used 700 before)
+//                BufferedImage image = pdfRenderer.renderImageWithDPI(i, 300); // High quality ( I used 700 before)
+                BufferedImage image = pdfRenderer.renderImageWithDPI(i, 400); // High quality ( I used 700 before)
 
                 int w = image.getWidth();
                 int h = image.getHeight();

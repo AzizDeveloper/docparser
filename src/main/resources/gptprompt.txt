@@ -1,0 +1,86 @@
+There are images, but they are actually pages of the pdf file.
+Order: Top left, top right, bottom left, bottom right. Every 4 images are 1 pdf page.
+Don't respond with like top left or top right, but create one whole page of information.
+Stick them together. Please extract all numbers and text from these images and convert to JSON response.
+If products or items have the same name then attach its unique field to its name.
+Or if they are same but length are different then you can sum them up to one product with total length or like that with other products if logically it's okay.
+But if another field is also different then 2 or more products can be summed up.
+Images can have Cyrillic symbols. I do not need any other words than JSON response in the response.
+The given content may contain vendor (supplier) information and a list of products.
+Your task is to extract only the relevant fields and return the data as structured JSON objects.
+
+Ignore any unrelated data.
+If there are no relevant data then respond: No relevant data found.
+If you couldn't read the file properly or text doesn't exist then respond: No text data found.
+
+Vendor fields to extract (skip missing fields if not found):
+
+name : String
+description : String
+email : String
+district : String
+city : String
+address : String
+contactName : String
+deliveryTime : Integer
+
+Product fields to extract (can be multiple products, skip missing fields):
+code : String
+productName : String
+List<ProductType> internalProducts (if some products contain other products then it must be placed inside its internalProducts list)
+ProductLevel productLevel
+price : BigDecimal
+amount : BigDecimal
+warehouse : String
+materialMeasureType : String
+
+ProductLevel is enum class and its values: LEVEL_1, LEVEL_2, LEVEL_3
+
+UNITS(1, amount, Amount, platform.measureTypes.units)
+WEIGHTED_KILO(2, kg, KG, platform.measureTypes.weighted_kilo)
+WEIGHTED_GRAM(3, gr, GR, platform.measureTypes.weighted_gram)
+VOLUME_L(4, ltr, LTR, platform.measureTypes.volume_litres)
+VOLUME_ML(5, ml, ML, platform.measureTypes.volume_mLitres)
+SQUARE_M(6, square meters, sq. m, platform.measureTypes.square_meters)
+LINEAR_METERS(7, linear meters, ln. m, platform.measureTypes.linear_meters)
+CUBIC_M(8, cubic meters, cub. m, platform.measureTypes.cubic_meters)
+TONS(9, tons, t, platform.measureTypes.tons)
+
+platform.measureTypes.name = Ед.изм. - means Единица измерения
+platform.measureTypes.units = шт - штук
+platform.measureTypes.weighted_kilo = кг - килограмм
+platform.measureTypes.weighted_gram = г - грамм
+platform.measureTypes.volume_litres = л - литр
+platform.measureTypes.volume_mLitres = мл - миллилитр
+platform.measureTypes.square_meters = м² - квадратный метр
+platform.measureTypes.linear_meters = п.м. - погонные метры
+platform.measureTypes.cubic_meters = м³ - кубический метр
+platform.measureTypes.tons = т - тонна
+
+When creating result use those enums like UNITS or TONS or etc, not raw т or кг
+
+MANDATORY LOGIC:
+
+There are 3 levels:
+
+LEVEL_1: Raw Materials
+LEVEL_2: Detail (must be made ONLY from LEVEL_1)
+LEVEL_3: Finished Product (can be made from LEVEL_1 and/or LEVEL_2)
+
+If a product (LEVEL_2 or LEVEL_3) does NOT contain internalProducts (i.e., sub-components), then it must be considered a LEVEL_1 product instead.
+If there is no clear description about which product is what level then main product is level 3 and others level 1 and use nested structure.
+If it's not level2 or level3 then all products must be nested to higher level products.
+
+You must logically detect which items are actual products. Ignore rows or items that are clearly not products (e.g., headers, metadata, or totals).
+
+Product names must be exactly preserved. Never alter digits, letters, or symbols in any way.
+If multiple products have the same or very similar name (e.g., same Cyrillic root word), sum their amounts.
+When merging names do not add anything from yourself only use from image/file data.
+
+If weight, lengths (millimeter or centimeter → convert them to meter) and amount are given, calculate their total amount = length × amount and put measure type to meter. Then group by product name and sum.
+How do you know the length is meter or centimeter or millimeter explain that in the ending.
+
+In the final Products list, return ONLY valid products — no extra image data, no unrelated rows, no totals.
+
+Cyrillic product names must be OCRed correctly. Pay extra attention to the first 3–4 characters. DO NOT guess or replace letters incorrectly.
+Do NOT include any extra fields not mentioned above.
