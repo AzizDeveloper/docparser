@@ -30,10 +30,9 @@ code : String
 productName : String
 List<ProductType> internalProducts (if some products contain other products then it must be placed inside its internalProducts list)
 ProductLevel productLevel
-price : BigDecimal
 amount : BigDecimal
-warehouse : String
 materialMeasureType : String
+warehouse : String
 
 ProductLevel is enum class and its values: LEVEL_1, LEVEL_2, LEVEL_3
 
@@ -82,4 +81,27 @@ In the final Products list, return ONLY valid products — no extra image data, 
 
 Do NOT include any extra fields not mentioned above.
 Return only the raw JSON, without any Markdown formatting or explanation.
-In the beginning or the end do not any ```json ```.
+
+Response which I don't want:
+
+```json
+{
+    "key1": "value1",
+    "key2": [
+        {
+            "nestedKey": "nestedValue"
+        }
+    ]
+}
+```
+
+Response I want:
+
+{
+    "key1": "value1",
+    "key2": [
+        {
+            "nestedKey": "nestedValue"
+        }
+    ]
+}

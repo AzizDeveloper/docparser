@@ -5,6 +5,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -13,14 +20,21 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 @Slf4j
 @Service
@@ -344,6 +358,10 @@ public class GPTRequestSenderService {
         Map<String, Object> root = new HashMap<>();
         root.put("contents", Collections.singletonList(content));
 
+        Map<String, Object> generationConfig = new HashMap<>();
+        generationConfig.put("responseMimeType", "application/json");
+        root.put("generationConfig", generationConfig);
+
         // Build JSON
         String jsonRequest;
         try {
@@ -382,10 +400,35 @@ public class GPTRequestSenderService {
                 .path("text")
                 .asText();
 
+        System.out.println("Gemini Response: " + geminiResponse);
+
+        JsonNode actualJsonNode;
+
+        byte[] excelBytes = null;
+        try {
+
+            actualJsonNode = mapper.readTree(rootResponse
+                    .path("candidates")
+                    .get(0)
+                    .path("content")
+                    .path("parts")
+                    .get(0)
+                    .path("text").asText());
+
+            excelBytes = generateExcelFromJson(actualJsonNode);
+
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
+            String timestamp = LocalDateTime.now().format(formatter);
+
+            saveExcelToResources(excelBytes, "products_" + timestamp + ".xlsx");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
         return geminiResponse;
     }
 
-}
+//}
 
 //before
 /*
@@ -470,4 +513,106 @@ String jsonRequest = root.toString();  // Ready to send
 
 * */
 
+
+    public byte[] generateExcelFromJson(JsonNode json) throws IOException {
+        System.out.println("generateExcelFromJson started!!!");
+        System.out.println("generateExcelFromJson json: " + json);
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("Product Info");
+
+        CellStyle boldStyle = workbook.createCellStyle();
+        Font boldFont = workbook.createFont();
+        boldFont.setBold(true);
+        boldStyle.setFont(boldFont);
+
+//        int rowIdx = 0;
+        AtomicInteger rowIdx = new AtomicInteger(0);
+
+        // Vendor info
+//        Row vendorRow1 = sheet.createRow(rowIdx++);
+        Row vendorRow1 = sheet.createRow(rowIdx.getAndIncrement());
+//        vendorRow1.createCell(0).setCellValue("Vendor Name:");
+        vendorRow1.createCell(0).setCellValue("Vendor Name:");
+        vendorRow1.createCell(1).setCellValue(json.path("vendor").path("name").asText());
+
+        Row vendorRow2 = sheet.createRow(rowIdx.getAndIncrement());
+        vendorRow2.createCell(0).setCellValue("Vendor City:");
+        vendorRow2.createCell(1).setCellValue(json.path("vendor").path("city").asText());
+
+        rowIdx.getAndIncrement(); // empty row
+
+        // Header
+        Row headerRow = sheet.createRow(rowIdx.getAndIncrement());
+        String[] headers = {"Product Name", "Code", "Amount", "Measure Type", "Product Level", "Internal Products Names"};
+        for (int i = 0; i < headers.length; i++) {
+            Cell cell = headerRow.createCell(i);
+            cell.setCellValue(headers[i]);
+            cell.setCellStyle(boldStyle);
+        }
+
+        // Helper method to add one product row
+        BiConsumer<JsonNode, String> addProductRow = (product, internalNames) -> {
+            Row row = sheet.createRow(rowIdx.getAndIncrement());
+            row.createCell(0).setCellValue(product.path("productName").asText());
+            row.createCell(1).setCellValue(product.path("code").asText());
+            row.createCell(2).setCellValue(product.path("amount").asDouble());
+            row.createCell(3).setCellValue(product.path("materialMeasureType").asText());
+            row.createCell(4).setCellValue(product.path("productLevel").asText());
+            row.createCell(5).setCellValue(internalNames != null ? internalNames : "");
+        };
+
+        for (JsonNode product : json.path("products")) {
+            List<String> internalNames = new ArrayList<>();
+            for (JsonNode internal : product.path("internalProducts")) {
+                internalNames.add(internal.path("productName").asText());
+            }
+
+            // Add parent product row with internal names
+            addProductRow.accept(product, String.join(", ", internalNames));
+
+            // Add all internal products as separate rows (without internal products of their own)
+            for (JsonNode internal : product.path("internalProducts")) {
+                addProductRow.accept(internal, null);
+            }
+        }
+
+        // Autosize
+        for (int i = 0; i < headers.length; i++) {
+            sheet.autoSizeColumn(i);
+        }
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        workbook.write(out);
+        workbook.close();
+        System.out.println("generateExcelFromJson ended!!!");
+
+        return out.toByteArray();
+    }
+
+    public void saveExcelToResources(byte[] excelData, String fileName) throws IOException {
+        System.out.println("saveExcelToResources started!!!");
+        // Define the directory
+        String directoryPath = "src/main/resources/results";
+        File directory = new File(directoryPath);
+
+        // Create the directory if it doesn't exist
+        if (!directory.exists()) {
+            boolean created = directory.mkdirs();
+            if (!created) {
+                throw new IOException("Failed to create directory: " + directoryPath);
+            }
+        }
+
+        // Prepare the file
+        File file = new File(directory, fileName);
+
+        // Write to file
+        try (FileOutputStream fos = new FileOutputStream(file)) {
+            fos.write(excelData);
+        }
+        System.out.println("saveExcelToResources ended!!!");
+    }
+
+
+}
 
