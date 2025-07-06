@@ -891,7 +891,7 @@ String jsonRequest = root.toString();  // Ready to send
 
     // TODO: Add 2 file input logic and 2 file handling logic.
     // TODO: In the last product it's not showing internalProducts as nested.
-    public String extractAllPagesFromGeminiWithParallelism(List<List<String>> pdfPagesBase64Images) {
+    public String extractAllPagesFromGeminiWithParallelism(List<List<List<String>>> pdfPagesBase64Images) {
         System.out.println("extractAllPagesFromGemini started.");
         String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=" + geminiApiKey;
 
@@ -912,17 +912,18 @@ String jsonRequest = root.toString();  // Ready to send
         ObjectMapper mapper = new ObjectMapper();
         RestTemplate restTemplate = new RestTemplate();
 
-        List<String> pageResponses = new ArrayList<>();
+        List<String> firstPdfResponses = new ArrayList<>();
+        List<String> secondPdfResponses = new ArrayList<>();
 
         // --- Step 1: Process each page individually ---
         int counter = 1;
-
         // Multithreading logic is used for performance purposes.
         ExecutorService executor = Executors.newFixedThreadPool(10); // You can adjust to control parallelism
 
         List<CompletableFuture<String>> futures = new ArrayList<>();
+        List<CompletableFuture<String>> futures2 = new ArrayList<>();
 
-        for (List<String> pageImages : pdfPagesBase64Images) {
+        for (List<String> pageImages : pdfPagesBase64Images.get(0)) {
             int pageNum = counter++;
             final String extractPromptFinal = extractPrompt;
             CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
@@ -992,17 +993,99 @@ String jsonRequest = root.toString();  // Ready to send
             futures.add(future);
         }
 
+        List<String> firstPageResults = futures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
+
+        for (List<String> pageImages : pdfPagesBase64Images.get(1)) {
+            int pageNum = counter++;
+            final String extractPromptFinal = extractPrompt;
+            CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+                System.out.println(pageNum + " is being processed.");
+
+                List<Map<String, Object>> parts = new ArrayList<>();
+
+                // Add up to 4 images per page
+                for (int i = 0; i < 4 && i < pageImages.size(); i++) {
+                    Map<String, Object> imagePart = new HashMap<>();
+                    Map<String, String> inlineData = new HashMap<>();
+                    inlineData.put("mimeType", "image/png");
+                    inlineData.put("data", pageImages.get(i).replace("data:image/png;base64,", ""));
+                    imagePart.put("inlineData", inlineData);
+                    parts.add(imagePart);
+                }
+
+                // Add text part with extract prompt
+                Map<String, Object> textPart = new HashMap<>();
+                textPart.put("text", extractPromptFinal);
+                parts.add(textPart);
+
+                // Build request
+                Map<String, Object> content = new HashMap<>();
+                content.put("parts", parts);
+
+                Map<String, Object> root = new HashMap<>();
+                root.put("contents", Collections.singletonList(content));
+
+                Map<String, Object> generationConfig = new HashMap<>();
+                generationConfig.put("responseMimeType", "application/json");
+                root.put("generationConfig", generationConfig);
+
+                String jsonRequest;
+                try {
+                    jsonRequest = mapper.writeValueAsString(root);
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException("Error while creating JSON object", e);
+                }
+
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+
+                HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
+
+                ResponseEntity<String> response = restTemplate.postForEntity(endpoint, entity, String.class);
+
+                JsonNode rootResponse;
+                try {
+                    rootResponse = mapper.readTree(response.getBody());
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException("Error while parsing Gemini response", e);
+                }
+
+                String geminiResponse = rootResponse
+                        .path("candidates")
+                        .get(0)
+                        .path("content")
+                        .path("parts")
+                        .get(0)
+                        .path("text")
+                        .asText();
+
+                return geminiResponse;
+
+            }, executor);
+            futures2.add(future);
+        }
+
         // Wait for all to complete and collect results
-        List<String> results = futures.stream()
+        List<String> secondPageResults = futures2.stream()
                 .map(CompletableFuture::join)
                 .collect(Collectors.toList());
 
         try {
             Files.createDirectories(Paths.get(OUTPUT_DIR));
-            Path filePath = Paths.get(OUTPUT_DIR, "response.txt");
+            Path firstFilePath = Paths.get(OUTPUT_DIR, "firstPdfResponse.txt");
             Files.write(
-                    filePath,
-                    results,
+                    firstFilePath,
+                    firstPageResults,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+            );
+            Path secondFilePath = Paths.get(OUTPUT_DIR, "secondPdfResponse.txt");
+            Files.write(
+                    secondFilePath,
+                    secondPageResults,
                     StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING
@@ -1013,7 +1096,8 @@ String jsonRequest = root.toString();  // Ready to send
 
 
         // Add to your pageResponses list
-        pageResponses.addAll(results);
+        firstPdfResponses.addAll(firstPageResults);
+        secondPdfResponses.addAll(secondPageResults);
 
         // Shutdown executor
         executor.shutdown();
@@ -1023,8 +1107,15 @@ String jsonRequest = root.toString();  // Ready to send
         // --- Step 2: Build final summary prompt and send combined request ---
         // Combine page responses into one text
         StringBuilder combinedContent = new StringBuilder();
-        for (int i = 0; i < pageResponses.size(); i++) {
-            combinedContent.append("Page ").append(i + 1).append(": ").append(pageResponses.get(i)).append("\n\n");
+
+        combinedContent.append("=== PDF 1: Main products information ===\n\n");
+        for (int i = 0; i < firstPdfResponses.size(); i++) {
+            combinedContent.append("PDF1 Page ").append(i + 1).append(": ").append(firstPdfResponses.get(i)).append("\n\n");
+        }
+
+        combinedContent.append("=== PDF 2: Nested product details information ===\n\n");
+        for (int i = 0; i < secondPdfResponses.size(); i++) {
+            combinedContent.append("PDF2 Page ").append(i + 1).append(": ").append(secondPdfResponses.get(i)).append("\n\n");
         }
 
         // Prepare parts for final request
@@ -1087,7 +1178,6 @@ String jsonRequest = root.toString();  // Ready to send
 
         return finalGeminiResponse;
     }
-
 
     public byte[] generateExcelFromJson(JsonNode json) throws IOException {
         System.out.println("generateExcelFromJson started!!!");

@@ -170,4 +170,55 @@ public class PdfToBase64Service {
         return allPagesImages;
     }
 
+    public List<List<List<String>>> convert2PdfsToBase64AllPages(MultipartFile[] files) {
+        if (files == null || files.length != 2) {
+            throw new IllegalArgumentException("Exactly 2 PDF files are required");
+        }
+
+        List<List<List<String>>> allPdfsPages = new ArrayList<>();
+
+        for (MultipartFile file : files) {
+            List<List<String>> pdfPages = new ArrayList<>();
+
+            try (PDDocument document = PDDocument.load(file.getInputStream())) {
+                PDFRenderer pdfRenderer = new PDFRenderer(document);
+                int pageCount = document.getNumberOfPages();
+
+                for (int i = 0; i < pageCount; i++) {
+                    BufferedImage fullImage = pdfRenderer.renderImageWithDPI(i, 400);
+
+                    int width = fullImage.getWidth();
+                    int height = fullImage.getHeight();
+                    int halfWidth = width / 2;
+                    int halfHeight = height / 2;
+
+                    List<String> pageImages = new ArrayList<>();
+
+                    BufferedImage topLeft = fullImage.getSubimage(0, 0, halfWidth, halfHeight);
+                    BufferedImage topRight = fullImage.getSubimage(halfWidth, 0, width - halfWidth, halfHeight);
+                    BufferedImage bottomLeft = fullImage.getSubimage(0, halfHeight, halfWidth, height - halfHeight);
+                    BufferedImage bottomRight = fullImage.getSubimage(halfWidth, halfHeight, width - halfWidth, height - halfHeight);
+
+                    List<BufferedImage> quarters = List.of(topLeft, topRight, bottomLeft, bottomRight);
+
+                    for (BufferedImage quarter : quarters) {
+                        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                            ImageIO.write(quarter, "png", baos);
+                            String base64 = Base64.getEncoder().encodeToString(baos.toByteArray());
+                            pageImages.add("data:image/png;base64," + base64);
+                        }
+                    }
+
+                    pdfPages.add(pageImages);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to process PDF", e);
+            }
+
+            allPdfsPages.add(pdfPages);
+        }
+
+        return allPdfsPages;
+    }
+
 }

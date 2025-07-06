@@ -75,12 +75,29 @@ public class PdfToBase64Controller {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/convert/multiple/gemini")
+    // Only 2nd file is being handled.
+/*    @PostMapping("/convert/multiple/gemini")
     public ResponseEntity<String> convertPdfToBase64WholePdf(@RequestParam("file") MultipartFile file) {
         System.out.println("Converting file with Gemini method started:");
 
 //        List<String> base64Images = pdfToBase64Service.convertPdfToBase64WholeImages(file);
         List<List<String>> base64Images = pdfToBase64Service.convertPdfToBase64AllPages(file);
+        System.out.println("convertPdfToBase64AllPages ended.");
+//        base64Images.forEach(System.out::println);
+
+        String response = gptRequestSenderService.extractAllPagesFromGeminiWithParallelism(base64Images);
+
+        System.out.println("Converting file with Gemini method ended.");
+        return ResponseEntity.ok(response);
+    }*/
+
+    // Both files is being handled.
+    @PostMapping("/convert/multiple/gemini")
+    public ResponseEntity<String> extractProductsFrom2PdfFiles(@RequestParam("files") MultipartFile[] files) {
+        System.out.println("Converting file with Gemini method started:");
+
+//        List<String> base64Images = pdfToBase64Service.convertPdfToBase64WholeImages(file);
+        List<List<List<String>>> base64Images = pdfToBase64Service.convert2PdfsToBase64AllPages(files);
         System.out.println("convertPdfToBase64AllPages ended.");
 //        base64Images.forEach(System.out::println);
 
