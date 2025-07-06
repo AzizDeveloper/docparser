@@ -1,6 +1,6 @@
 package dev.aziz.docparser.controller;
 
-import dev.aziz.docparser.service.GPTRequestSenderService;
+import dev.aziz.docparser.service.AIRequestSenderService;
 import dev.aziz.docparser.service.PdfToBase64Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,7 +16,7 @@ import java.util.List;
 public class PdfToBase64Controller {
 
     private final PdfToBase64Service pdfToBase64Service;
-    private final GPTRequestSenderService gptRequestSenderService;
+    private final AIRequestSenderService gptRequestSenderService;
 
     @PostMapping("/convert")
     public ResponseEntity<String> convertPdfToBase64(@RequestParam("file") MultipartFile file) {
@@ -59,6 +59,35 @@ public class PdfToBase64Controller {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Failed to convert image: " + e.getMessage());
         }
+    }
+
+    @PostMapping("/convert/new/gemini")
+    public ResponseEntity<String> convertPdfToBase64WholeImagesToGemini(@RequestParam("file") MultipartFile file) {
+        System.out.println("Converting file with Gemini method started:");
+
+        List<String> base64Images = pdfToBase64Service.convertPdfToBase64WholeImages(file);
+
+//        base64Images.forEach(System.out::println);
+
+        String response = gptRequestSenderService.sendToGemini(base64Images);
+
+        System.out.println("Converting file with Gemini method ended.");
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/convert/multiple/gemini")
+    public ResponseEntity<String> convertPdfToBase64WholePdf(@RequestParam("file") MultipartFile file) {
+        System.out.println("Converting file with Gemini method started:");
+
+//        List<String> base64Images = pdfToBase64Service.convertPdfToBase64WholeImages(file);
+        List<List<String>> base64Images = pdfToBase64Service.convertPdfToBase64AllPages(file);
+        System.out.println("convertPdfToBase64AllPages ended.");
+//        base64Images.forEach(System.out::println);
+
+        String response = gptRequestSenderService.extractAllPagesFromGeminiWithParallelism(base64Images);
+
+        System.out.println("Converting file with Gemini method ended.");
+        return ResponseEntity.ok(response);
     }
 
 }

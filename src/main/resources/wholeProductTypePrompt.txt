@@ -1,13 +1,14 @@
-Important thing: request has list or string or json data that includes one pdf files pages, you must extract data from those.
-I want you to create nested productType json. Other information are described below.
-
+There are images, but they are actually pages of the pdf file.
+Order: Top left, top right, bottom left, bottom right.
+Images will be named or sent in such a way that the order is clearly: top left, top right, bottom left, bottom right. Treat these 4 as a grid to reconstruct the full PDF page layout.
+Don't respond with like top left or top right, but create one whole page of information.
+Stick them together. Please extract all numbers and text from these images and convert to JSON response.
 Cyrillic product names must be OCRed correctly. Pay extra attention to the first 3–4 characters. DO NOT guess or replace letters incorrectly.
-Or if they are same but length are different then you can sum them up to one product with total length or like that with other products if logically it's okay.
-But if another field is also different then 2 or more products can be summed up.
+Or if they are same but length are different then add that length field to name also.
+Logic is like this: if products name same but there are multiple, then attach their unique fields or specifications for that product.
 Images can have Cyrillic symbols. I do not need any other words than JSON response in the response.
 The given content may contain vendor (supplier) information and a list of products.
 Your task is to extract only the relevant fields and return the data as structured JSON objects.
-
 
 Ignore any unrelated data.
 If there are no relevant data then respond: No relevant data found.
@@ -60,21 +61,17 @@ If there is no clear description about which product is what level then main pro
 If it's not level2 or level3 then all products must be nested to higher level products.
 I am saying again, if product does not have any internalProducts it's not level3 or level2 it must be downgraded to level1.
 If there is no obvious data about product has internalProducts then it does not have internalProducts then it's level1 product.
+If you see logically it's LEVEL_2 and LEVEL_1 but there is not much info about LEVEL_3 then response as it is without LEVEL_3.
 
 You must logically detect which items are actual products. Ignore rows or items that are clearly not products (e.g., headers, metadata, or totals).
 
-If there are more than one measureType then you must use only one and set to materialMeasureType field.
-If materialMeasureType is meter or kilogram then amount can be used as for help like:
-materialMeasureType -> meter. amount -> 30.5. Then product is 30.5 meter.
-materialMeasureType -> kilogram. amount -> 13. Then product is 13 kilogram.
-Sum products amounts if names are identical, and/or they differ by length but can be summed up by their other measureType (like weight). Weight * amount, or length * amount.
-Sum up products weight and display it.
-If products core name can be used and only by weight/length could be used as measureType then do it like that.
-Group the products by productName only. Names can differ with some space or dash position but you must see them as same products.
-Ignore the code field when grouping or summing. If multiple entries have the same productName, sum their amount values regardless of the code.
-
-Do not change names. Only merge if logical grouping by length/amount makes sense.
-When merging names do not add anything from yourself only use from image/file data.
+If there are length and weight (or other fields), always prioritize length, and set materialMeasureType to UNITS.
+You must attach length and steel grade to product name to ensure uniqueness.
+Never use weight as materialMeasureType if length is present.
+Weight should only be used for internal data or total calculation, not for materialMeasureType.
+If possible use length as measureType but if you must add to name to have unique product name then use UNITS.
+If they are not possible then use weight as measureType.
+Names can differ with some space or dash position, but you must see them as same products.
 
 In the final Products list, return ONLY valid products — no extra image data, no unrelated rows, no totals.
 

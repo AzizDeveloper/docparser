@@ -1,13 +1,14 @@
-Important thing: request has list or string or json data that includes one pdf files pages, you must extract data from those.
-I want you to create nested productType json. Other information are described below.
+There are images and they are pages of the pdf file.
 
+You must find those nested low level products and other products. This file is kind of instruction like file,
+contains data about which product contains with what products/rawMaterials and etc.
+Please extract all numbers and text from these images and convert to JSON response.
 Cyrillic product names must be OCRed correctly. Pay extra attention to the first 3–4 characters. DO NOT guess or replace letters incorrectly.
 Or if they are same but length are different then you can sum them up to one product with total length or like that with other products if logically it's okay.
 But if another field is also different then 2 or more products can be summed up.
 Images can have Cyrillic symbols. I do not need any other words than JSON response in the response.
 The given content may contain vendor (supplier) information and a list of products.
 Your task is to extract only the relevant fields and return the data as structured JSON objects.
-
 
 Ignore any unrelated data.
 If there are no relevant data then respond: No relevant data found.

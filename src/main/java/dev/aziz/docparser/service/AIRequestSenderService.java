@@ -24,8 +24,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -33,19 +36,25 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class GPTRequestSenderService {
+public class AIRequestSenderService {
 
     @Value("${openai.api.key}")
     private String apiKey;
 
     @Value("${spring.ai.gemini.api-key}")
     private String geminiApiKey;
+
+    private static final String OUTPUT_DIR = "src/main/resources/generated";
 
     //    public String sendToGptVision(String base64Image) {
     public String sendToGptVision(List<String> base64Images) {
@@ -312,7 +321,6 @@ public class GPTRequestSenderService {
 
     }
 
-    //TODO: extract gemini prompt to textFile ( or use for both one prompt)
     public String sendToGemini(List<String> base64Images) {
 //        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + geminiApiKey;
         String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=" + geminiApiKey;
@@ -513,6 +521,573 @@ String jsonRequest = root.toString();  // Ready to send
 
 * */
 
+    public String sendToGeminiWithWholePages(List<String> base64Images) {
+//        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + geminiApiKey;
+        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=" + geminiApiKey;
+
+        String geminiPrompt = "";
+        try {
+            // Replace with the actual path to your prevPromptsExamples file
+//            Path filePath = Path.of("src/main/resources/gptprompt.txt");
+            Path filePath = Path.of("src/main/resources/wholepageprompt.txt");
+//            Path filePath = Path.of("src/main/resources/gptweightprompt.txt");
+
+            // Read entire content into one String
+            geminiPrompt = Files.readString(filePath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        ObjectMapper mapper = new ObjectMapper();
+
+        // Content parts
+        List<Map<String, Object>> parts = new ArrayList<>();
+
+        // Add image parts (up to 4 as in original, adjust as needed)
+        for (int i = 0; i < base64Images.size(); i++) {
+            Map<String, Object> imagePart = new HashMap<>();
+            Map<String, String> inlineData = new HashMap<>();
+            inlineData.put("mimeType", "image/png");  // or image/jpeg if that's your base64
+            inlineData.put("data", base64Images.get(i).replace("data:image/png;base64,", ""));
+
+            imagePart.put("inlineData", inlineData);
+            parts.add(imagePart);
+        }
+
+        // Add text part (your instruction)
+        Map<String, Object> textPart = new HashMap<>();
+        textPart.put("text", geminiPrompt);
+        parts.add(textPart);
+
+        // Root request structure
+        Map<String, Object> content = new HashMap<>();
+        content.put("parts", parts);
+
+        Map<String, Object> root = new HashMap<>();
+        root.put("contents", Collections.singletonList(content));
+
+        Map<String, Object> generationConfig = new HashMap<>();
+        generationConfig.put("responseMimeType", "application/json");
+        root.put("generationConfig", generationConfig);
+
+        // Build JSON
+        String jsonRequest;
+        try {
+            jsonRequest = mapper.writeValueAsString(root);
+        } catch (JsonProcessingException e) {
+            log.error("Error while creating JSON object", e);
+            throw new RuntimeException(e);
+        }
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
+        RestTemplate restTemplate = new RestTemplate();
+
+        ResponseEntity<String> response = restTemplate.postForEntity(endpoint, entity, String.class);
+
+        JsonNode rootResponse = null;
+        try {
+            rootResponse = mapper.readTree(response.getBody());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+        String geminiResponse = rootResponse
+                .path("candidates")
+                .get(0)
+                .path("content")
+                .path("parts")
+                .get(0)
+                .path("text")
+                .asText();
+
+        JsonNode actualJsonNode;
+
+        byte[] excelBytes = null;
+        try {
+
+            actualJsonNode = mapper.readTree(rootResponse
+                    .path("candidates")
+                    .get(0)
+                    .path("content")
+                    .path("parts")
+                    .get(0)
+                    .path("text").asText());
+
+            excelBytes = generateExcelFromJson(actualJsonNode);
+
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
+            String timestamp = LocalDateTime.now().format(formatter);
+
+            saveExcelToResources(excelBytes, "products_" + timestamp + ".xlsx");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        return geminiResponse;
+    }
+
+/*    public List<String> extractAllPagesFromGemini(List<List<String>> pdfPagesBase64Images) {
+        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=" + geminiApiKey;
+
+        String extractPrompt = "";
+        String finalPrompt = "";
+        try {
+            // Replace with the actual path to your prevPromptsExamples file
+//            Path filePath = Path.of("src/main/resources/gptprompt.txt");
+            // TODO: prompt for extracting from one pdf page ( 4 images ).
+            Path filePath = Path.of("src/main/resources/onepageprompt.txt");
+            Path finalPromptFilePath = Path.of("src/main/resources/wholeProductTypePrompt.txt");
+//            Path filePath = Path.of("src/main/resources/gptweightprompt.txt");
+
+            // Read entire content into one String
+            extractPrompt = Files.readString(filePath);
+            finalPrompt = Files.readString(finalPromptFilePath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        ObjectMapper mapper = new ObjectMapper();
+        RestTemplate restTemplate = new RestTemplate();
+
+        List<String> pageResponses = new ArrayList<>();
+
+        for (List<String> pageImages : pdfPagesBase64Images) {
+            // Content parts for this single page
+            List<Map<String, Object>> parts = new ArrayList<>();
+
+            // Add up to 4 images for this page
+            for (int i = 0; i < 4 && i < pageImages.size(); i++) {
+                Map<String, Object> imagePart = new HashMap<>();
+                Map<String, String> inlineData = new HashMap<>();
+                inlineData.put("mimeType", "image/png");
+                inlineData.put("data", pageImages.get(i).replace("data:image/png;base64,", ""));
+                imagePart.put("inlineData", inlineData);
+                parts.add(imagePart);
+            }
+
+            // Add text part (your extracting prompt)
+            Map<String, Object> textPart = new HashMap<>();
+            textPart.put("text", extractPrompt);
+            parts.add(textPart);
+
+            // Root request structure
+            Map<String, Object> content = new HashMap<>();
+            content.put("parts", parts);
+
+            Map<String, Object> root = new HashMap<>();
+            root.put("contents", Collections.singletonList(content));
+
+            Map<String, Object> generationConfig = new HashMap<>();
+            generationConfig.put("responseMimeType", "application/json");
+            root.put("generationConfig", generationConfig);
+
+            // Build JSON
+            String jsonRequest;
+            try {
+                jsonRequest = mapper.writeValueAsString(root);
+            } catch (JsonProcessingException e) {
+                log.error("Error while creating JSON object", e);
+                throw new RuntimeException(e);
+            }
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(endpoint, entity, String.class);
+
+            JsonNode rootResponse;
+            try {
+                rootResponse = mapper.readTree(response.getBody());
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+
+            String geminiResponse = rootResponse
+                    .path("candidates")
+                    .get(0)
+                    .path("content")
+                    .path("parts")
+                    .get(0)
+                    .path("text")
+                    .asText();
+
+            System.out.println("Gemini Response for page: " + geminiResponse);
+
+            // Save each page's extracted result to the list
+            pageResponses.add(geminiResponse);
+            // (Optional) Save each to Excel immediately if needed, or skip for now
+        }
+
+
+    / /        with finalPrompt and pageResponses I must send request to gemini api again with another prompt and that response will be sent back from this method.
+
+        // Return all individual page extracted responses
+        return pageResponses;
+    }*/
+
+    /*public String extractAllPagesFromGemini(List<List<String>> pdfPagesBase64Images) {
+        System.out.println("extractAllPagesFromGemini started.");
+        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=" + geminiApiKey;
+
+        String extractPrompt = "";
+        String finalPrompt = "";
+        try {
+            // Prompt for per-page extraction
+            Path extractPromptPath = Path.of("src/main/resources/onepageprompt.txt");
+            // Prompt for final combined analysis
+            Path finalPromptPath = Path.of("src/main/resources/wholeProductTypePrompt.txt");
+
+            extractPrompt = Files.readString(extractPromptPath);
+            finalPrompt = Files.readString(finalPromptPath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        ObjectMapper mapper = new ObjectMapper();
+        RestTemplate restTemplate = new RestTemplate();
+
+        List<String> pageResponses = new ArrayList<>();
+
+        // --- Step 1: Process each page individually ---
+        int counter = 1;
+        for (List<String> pageImages : pdfPagesBase64Images) {
+            System.out.println(counter++ + " is being processed.");
+            List<Map<String, Object>> parts = new ArrayList<>();
+
+            // Add up to 4 images per page
+            for (int i = 0; i < 4 && i < pageImages.size(); i++) {
+                Map<String, Object> imagePart = new HashMap<>();
+                Map<String, String> inlineData = new HashMap<>();
+                inlineData.put("mimeType", "image/png");
+                inlineData.put("data", pageImages.get(i).replace("data:image/png;base64,", ""));
+                imagePart.put("inlineData", inlineData);
+                parts.add(imagePart);
+            }
+
+            // Add text part with extract prompt
+            Map<String, Object> textPart = new HashMap<>();
+            textPart.put("text", extractPrompt);
+            parts.add(textPart);
+
+            // Build request
+            Map<String, Object> content = new HashMap<>();
+            content.put("parts", parts);
+
+            Map<String, Object> root = new HashMap<>();
+            root.put("contents", Collections.singletonList(content));
+
+            Map<String, Object> generationConfig = new HashMap<>();
+            generationConfig.put("responseMimeType", "application/json");
+            root.put("generationConfig", generationConfig);
+
+            String jsonRequest;
+            try {
+                jsonRequest = mapper.writeValueAsString(root);
+            } catch (JsonProcessingException e) {
+                log.error("Error while creating JSON object", e);
+                throw new RuntimeException(e);
+            }
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
+
+            ResponseEntity<String> response = restTemplate.postForEntity(endpoint, entity, String.class);
+
+            JsonNode rootResponse;
+            try {
+                rootResponse = mapper.readTree(response.getBody());
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+
+            String geminiResponse = rootResponse
+                    .path("candidates")
+                    .get(0)
+                    .path("content")
+                    .path("parts")
+                    .get(0)
+                    .path("text")
+                    .asText();
+
+//            System.out.println("Gemini Response for page: " + geminiResponse);
+
+            pageResponses.add(geminiResponse);
+        }
+        System.out.println("Separate page responses accepted.");
+        // --- Step 2: Build final summary prompt and send combined request ---
+        // Combine page responses into one text
+        StringBuilder combinedContent = new StringBuilder();
+        for (int i = 0; i < pageResponses.size(); i++) {
+            combinedContent.append("Page ").append(i + 1).append(": ").append(pageResponses.get(i)).append("\n\n");
+        }
+
+        // Prepare parts for final request
+        List<Map<String, Object>> finalParts = new ArrayList<>();
+
+        // Add text part with all extracted page results
+        Map<String, Object> combinedPart = new HashMap<>();
+        combinedPart.put("text", combinedContent.toString());
+        finalParts.add(combinedPart);
+
+        // Add final instruction prompt
+        Map<String, Object> finalPromptPart = new HashMap<>();
+        finalPromptPart.put("text", finalPrompt);
+        finalParts.add(finalPromptPart);
+
+        Map<String, Object> finalContent = new HashMap<>();
+        finalContent.put("parts", finalParts);
+
+        Map<String, Object> finalRoot = new HashMap<>();
+        finalRoot.put("contents", Collections.singletonList(finalContent));
+
+        Map<String, Object> generationConfigFinal = new HashMap<>();
+        generationConfigFinal.put("responseMimeType", "application/json");
+        finalRoot.put("generationConfig", generationConfigFinal);
+
+        String finalJsonRequest;
+        try {
+            finalJsonRequest = mapper.writeValueAsString(finalRoot);
+        } catch (JsonProcessingException e) {
+            log.error("Error while creating final JSON object", e);
+            throw new RuntimeException(e);
+        }
+
+        HttpHeaders finalHeaders = new HttpHeaders();
+        finalHeaders.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<String> finalEntity = new HttpEntity<>(finalJsonRequest, finalHeaders);
+
+        ResponseEntity<String> finalResponse = restTemplate.postForEntity(endpoint, finalEntity, String.class);
+
+        JsonNode finalRootResponse;
+        try {
+            finalRootResponse = mapper.readTree(finalResponse.getBody());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+        String finalGeminiResponse = finalRootResponse
+                .path("candidates")
+                .get(0)
+                .path("content")
+                .path("parts")
+                .get(0)
+                .path("text")
+                .asText();
+
+        System.out.println("Final Gemini Response accepted");
+
+        // You can also optionally save finalGeminiResponse to file, DB, or Excel here
+
+        return finalGeminiResponse;
+    }*/
+
+    // TODO: Add 2 file input logic and 2 file handling logic.
+    // TODO: In the last product it's not showing internalProducts as nested.
+    public String extractAllPagesFromGeminiWithParallelism(List<List<String>> pdfPagesBase64Images) {
+        System.out.println("extractAllPagesFromGemini started.");
+        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=" + geminiApiKey;
+
+        String extractPrompt = "";
+        String finalPrompt = "";
+        try {
+            // Prompt for per-page extraction
+            Path extractPromptPath = Path.of("src/main/resources/onepageprompt.txt");
+            // Prompt for final combined analysis
+            Path finalPromptPath = Path.of("src/main/resources/wholeProductTypePrompt.txt");
+
+            extractPrompt = Files.readString(extractPromptPath);
+            finalPrompt = Files.readString(finalPromptPath);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        ObjectMapper mapper = new ObjectMapper();
+        RestTemplate restTemplate = new RestTemplate();
+
+        List<String> pageResponses = new ArrayList<>();
+
+        // --- Step 1: Process each page individually ---
+        int counter = 1;
+
+        // Multithreading logic is used for performance purposes.
+        ExecutorService executor = Executors.newFixedThreadPool(10); // You can adjust to control parallelism
+
+        List<CompletableFuture<String>> futures = new ArrayList<>();
+
+        for (List<String> pageImages : pdfPagesBase64Images) {
+            int pageNum = counter++;
+            final String extractPromptFinal = extractPrompt;
+            CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+                System.out.println(pageNum + " is being processed.");
+
+                List<Map<String, Object>> parts = new ArrayList<>();
+
+                // Add up to 4 images per page
+                for (int i = 0; i < 4 && i < pageImages.size(); i++) {
+                    Map<String, Object> imagePart = new HashMap<>();
+                    Map<String, String> inlineData = new HashMap<>();
+                    inlineData.put("mimeType", "image/png");
+                    inlineData.put("data", pageImages.get(i).replace("data:image/png;base64,", ""));
+                    imagePart.put("inlineData", inlineData);
+                    parts.add(imagePart);
+                }
+
+                // Add text part with extract prompt
+                Map<String, Object> textPart = new HashMap<>();
+                textPart.put("text", extractPromptFinal);
+                parts.add(textPart);
+
+                // Build request
+                Map<String, Object> content = new HashMap<>();
+                content.put("parts", parts);
+
+                Map<String, Object> root = new HashMap<>();
+                root.put("contents", Collections.singletonList(content));
+
+                Map<String, Object> generationConfig = new HashMap<>();
+                generationConfig.put("responseMimeType", "application/json");
+                root.put("generationConfig", generationConfig);
+
+                String jsonRequest;
+                try {
+                    jsonRequest = mapper.writeValueAsString(root);
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException("Error while creating JSON object", e);
+                }
+
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+
+                HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
+
+                ResponseEntity<String> response = restTemplate.postForEntity(endpoint, entity, String.class);
+
+                JsonNode rootResponse;
+                try {
+                    rootResponse = mapper.readTree(response.getBody());
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException("Error while parsing Gemini response", e);
+                }
+
+                String geminiResponse = rootResponse
+                        .path("candidates")
+                        .get(0)
+                        .path("content")
+                        .path("parts")
+                        .get(0)
+                        .path("text")
+                        .asText();
+
+                return geminiResponse;
+
+            }, executor);
+            futures.add(future);
+        }
+
+        // Wait for all to complete and collect results
+        List<String> results = futures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toList());
+
+        try {
+            Files.createDirectories(Paths.get(OUTPUT_DIR));
+            Path filePath = Paths.get(OUTPUT_DIR, "response.txt");
+            Files.write(
+                    filePath,
+                    results,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+            );
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+
+        // Add to your pageResponses list
+        pageResponses.addAll(results);
+
+        // Shutdown executor
+        executor.shutdown();
+
+
+        System.out.println("Separate page responses accepted.");
+        // --- Step 2: Build final summary prompt and send combined request ---
+        // Combine page responses into one text
+        StringBuilder combinedContent = new StringBuilder();
+        for (int i = 0; i < pageResponses.size(); i++) {
+            combinedContent.append("Page ").append(i + 1).append(": ").append(pageResponses.get(i)).append("\n\n");
+        }
+
+        // Prepare parts for final request
+        List<Map<String, Object>> finalParts = new ArrayList<>();
+
+        // Add text part with all extracted page results
+        Map<String, Object> combinedPart = new HashMap<>();
+        combinedPart.put("text", combinedContent.toString());
+        finalParts.add(combinedPart);
+
+        // Add final instruction prompt
+        Map<String, Object> finalPromptPart = new HashMap<>();
+        finalPromptPart.put("text", finalPrompt);
+        finalParts.add(finalPromptPart);
+
+        Map<String, Object> finalContent = new HashMap<>();
+        finalContent.put("parts", finalParts);
+
+        Map<String, Object> finalRoot = new HashMap<>();
+        finalRoot.put("contents", Collections.singletonList(finalContent));
+
+        Map<String, Object> generationConfigFinal = new HashMap<>();
+        generationConfigFinal.put("responseMimeType", "application/json");
+        finalRoot.put("generationConfig", generationConfigFinal);
+
+        String finalJsonRequest;
+        try {
+            finalJsonRequest = mapper.writeValueAsString(finalRoot);
+        } catch (JsonProcessingException e) {
+            log.error("Error while creating final JSON object", e);
+            throw new RuntimeException(e);
+        }
+
+        HttpHeaders finalHeaders = new HttpHeaders();
+        finalHeaders.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<String> finalEntity = new HttpEntity<>(finalJsonRequest, finalHeaders);
+
+        ResponseEntity<String> finalResponse = restTemplate.postForEntity(endpoint, finalEntity, String.class);
+
+        JsonNode finalRootResponse;
+        try {
+            finalRootResponse = mapper.readTree(finalResponse.getBody());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+        String finalGeminiResponse = finalRootResponse
+                .path("candidates")
+                .get(0)
+                .path("content")
+                .path("parts")
+                .get(0)
+                .path("text")
+                .asText();
+
+        System.out.println("Final Gemini Response accepted");
+
+        // You can also optionally save finalGeminiResponse to file, DB, or Excel here
+
+        return finalGeminiResponse;
+    }
+
 
     public byte[] generateExcelFromJson(JsonNode json) throws IOException {
         System.out.println("generateExcelFromJson started!!!");
@@ -532,18 +1107,19 @@ String jsonRequest = root.toString();  // Ready to send
 //        Row vendorRow1 = sheet.createRow(rowIdx++);
         Row vendorRow1 = sheet.createRow(rowIdx.getAndIncrement());
 //        vendorRow1.createCell(0).setCellValue("Vendor Name:");
-        vendorRow1.createCell(0).setCellValue("Vendor Name:");
+        vendorRow1.createCell(0).setCellValue("Наименование поставщика:");
         vendorRow1.createCell(1).setCellValue(json.path("vendor").path("name").asText());
 
         Row vendorRow2 = sheet.createRow(rowIdx.getAndIncrement());
-        vendorRow2.createCell(0).setCellValue("Vendor City:");
+        vendorRow2.createCell(0).setCellValue("Город поставщика:");
         vendorRow2.createCell(1).setCellValue(json.path("vendor").path("city").asText());
 
         rowIdx.getAndIncrement(); // empty row
 
         // Header
         Row headerRow = sheet.createRow(rowIdx.getAndIncrement());
-        String[] headers = {"Product Name", "Code", "Amount", "Measure Type", "Product Level", "Internal Products Names"};
+//        String[] headers = {"Product Name", "Code", "Amount", "Measure Type", "Product Level", "Internal Products Names"};
+        String[] headers = {"Наименование", "Код", "Количество", "Ед. измерения", "Уровень", "Внутренние продукты"};
         for (int i = 0; i < headers.length; i++) {
             Cell cell = headerRow.createCell(i);
             cell.setCellValue(headers[i]);
@@ -592,7 +1168,7 @@ String jsonRequest = root.toString();  // Ready to send
     public void saveExcelToResources(byte[] excelData, String fileName) throws IOException {
         System.out.println("saveExcelToResources started!!!");
         // Define the directory
-        String directoryPath = "src/main/resources/results";
+        String directoryPath = "src/main/resources/results/excel";
         File directory = new File(directoryPath);
 
         // Create the directory if it doesn't exist

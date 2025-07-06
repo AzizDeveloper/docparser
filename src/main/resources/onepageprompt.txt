@@ -1,0 +1,38 @@
+There are images, but they are actually pages of the pdf file.
+Order: Top left, top right, bottom left, bottom right.
+Images will be named or sent in such a way that the order is clearly: top left, top right, bottom left, bottom right. Treat these 4 as a grid to reconstruct the full PDF page layout.
+Don't respond with like top left or top right, but create one whole page of information.
+Stick them together. Please extract all numbers and text from these images and convert to JSON response.
+Cyrillic product names must be OCRed correctly. Pay extra attention to the first 3–4 characters. DO NOT guess or replace letters incorrectly.
+Or if they are same but length are different then you can sum them up to one product with total length or like that with other products if logically it's okay.
+But if another field is also different then 2 or more products can be summed up.
+Images can have Cyrillic symbols. I do not need any other words than JSON response in the response.
+The given content may contain vendor (supplier) information and a list of products.
+Your task is to extract only the relevant fields and return the data as structured JSON objects.
+
+Do NOT include any extra fields not mentioned above.
+Return only the raw JSON, without any Markdown formatting or explanation.
+
+Response which I don't want:
+
+```json
+{
+    "key1": "value1",
+    "key2": [
+        {
+            "nestedKey": "nestedValue"
+        }
+    ]
+}
+```
+
+Response I want:
+
+{
+    "key1": "value1",
+    "key2": [
+        {
+            "nestedKey": "nestedValue"
+        }
+    ]
+}

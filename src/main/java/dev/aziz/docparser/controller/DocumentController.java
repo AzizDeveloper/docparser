@@ -213,7 +213,6 @@ public class DocumentController {
             //                    measureTypes.linear_meters=п.м.
             //                    measureTypes.cubic_meters=м³
             //                    measureTypes.tons=т
-//TODO: add material types in russian шт. etc.
 
             String promptText = instruction + text;  // text is the extracted text from Tika
 
